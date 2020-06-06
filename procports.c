@@ -19,6 +19,7 @@ hanguplocalport(int port)
 	int conn, fd;
 
 	conn = localportconn(port);
+	if(conn < 0) return 0;
 	snprint(path, sizeof(path)-1, "/net/tcp/%d/ctl", conn);
 	fd = open(path, OWRITE);
 	if(fd < 0) return -1;
@@ -104,7 +105,7 @@ extern char *linuxhost;
 extern char *cbhost;
 
 // Looks under /net/tcp for conns with status Listen or Established.
-// returns malloced array of ints terminated with -1. 
+// returns malloced array of ints terminated with -1.
 int*
 portsbusy()
 {

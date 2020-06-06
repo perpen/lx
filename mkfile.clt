@@ -1,15 +1,13 @@
 </$objtype/mkfile
 
-# to make it easier to play with multiple versions, compute the name
-# of the binary from the current dir name
-PWD=`{pwd}
-TARG=`{basename $PWD}
+TARG=`{cat name}
 OFILES=lx.$O procports.$O
 BIN=/$objtype/bin
-MAN=/sys/man
 CFLAGS=-FTVw
 
 </sys/src/cmd/mkone
+
+install:V: $BIN/$TARG myman
 
 myman:V:
 	cp man/lx.1 /sys/man/1/$TARG

@@ -15,20 +15,23 @@ extern int mkdir(const char *pathname, mode_t mode);
 
 #define DEFAULTPORT "9000"
 #define NINEMNT "/9"
+#define FDOFF 20
 #define VNCMAXCOUNT 100
 #define VNCMINDPY 100
 // Increase this if "can't open display" errors
 // FIXME make into a config param? plus can be machine-dependent
 #define VNCWAITMS 200
 
-char *progname, *plan9dir, *tmpdir;
+char *progname, *plan9dir, *tmpdir, *mntbasedir;
 int lckfd;
-QLock x11lck;
+
+// Using this struct simply for grouping session-related globals
 struct {
-	char *host, *mnt, *pxydir, *tmp;
+	char *host, *pxydir, *tmp;
 	int port, logfd, debug, fd9, pid, clientended;
 	int pxyfd, pxydpy, vncdpy, x11count;
-} S; // S for session
+	QLock x11lck;
+} S;
 
 typedef struct {
 	char *host, *cwd, *mounts;
@@ -61,13 +64,13 @@ void killvnc();
 int waitforvnc();
 int proxychunk(Ioproc *io, int src, int tgt);
 void proxy(void *arg);
-void x11handle(void *arg);
+void x11conn(void *arg);
 void x11listen(void *arg);
-void fuse(char* host, int port);
 void command(char *cwd, char **argv);
 Params getparams();
 char* readparamsblock(int fd);
-void setupns(char *mounts);
+void p9prun(char *a0, char *a1, char *a2);
+void setupns(char *host, int port, char *mounts);
 void setupio();
 void handlenote(char *note);
 void control(void *arg);
@@ -88,24 +91,19 @@ _dbg(int iserror, char *format, ...)
 	va_start(arg, format);
 	vsnprint(buf + prelen, sizeof(buf) - prelen - 1, format, arg);
 	va_end(arg);
-	if(S.debug || iserror){
+	if(S.debug || iserror)
 		// client must show this
 		fprint(2, buf);
-	}
-	if(S.logfd != 0){
+	if(S.logfd != 0)
 		// offset b/c no need for prefix in log file
 		fprint(S.logfd, buf+prelen);
-	}
 }
 
 void*
 emalloc(int n)
 {
 	void *v = mallocz(n, 1);
-	if(v == nil){
-		abort();
-		sysfatal("out of memory allocating %d", n);
-	}
+	if(v == nil) sysfatal("out of memory allocating %d", n);
 	return v;
 }
 
@@ -113,10 +111,7 @@ void*
 erealloc(void *v, int n)
 {
 	v = realloc(v, n);
-	if(v == nil){
-		abort();
-		sysfatal("out of memory reallocating %d", n);
-	}
+	if(v == nil) sysfatal("out of memory reallocating %d", n);
 	return v;
 }
 
@@ -124,10 +119,7 @@ void*
 estrdup(void *v)
 {
 	v = strdup(v);
-	if(v == nil){
-		abort();
-		sysfatal("out of memory strdup'ing %s", v);
-	}
+	if(v == nil) sysfatal("out of memory strdup'ing %s", v);
 	return v;
 }
 
@@ -195,29 +187,23 @@ session()
 {
 	Params params = getparams();
 
+	S.debug = params.debug;
 	S.host = params.host;
 	S.port = params.port;
-	S.debug = params.debug;
-	{
-		int logpipe[2];
-		int *logfdin = emalloc(sizeof(int));
-		pipe(logpipe);
-		S.logfd = logpipe[0];
-		*logfdin = logpipe[1];
-		threadcreate(logsink, logfdin, 32*1024);
-	}
+
+	int logpipe[2];
+	int *logfdin = emalloc(sizeof(int));
+	pipe(logpipe);
+	S.logfd = logpipe[0];
+	*logfdin = logpipe[1];
+	threadcreate(logsink, logfdin, 32*1024);
+
 	if(createpxysock() < 0)
 		sysfatal9("unable to find a free vnc proxy port");
 	S.vncdpy = S.pxydpy + VNCMAXCOUNT;
 
-	char mnt[50];
-	esnprint(mnt, sizeof(mnt), "/mnt/lx/%s/%d", params.host, S.port);
-	mkdir_p(mnt, 0700);
-	S.mnt = estrdup(mnt);
-
 	atexit(cleanup);
-	fuse(params.host, params.port);
-	setupns(params.mounts);
+	setupns(params.host, params.port, params.mounts);
 	setupio();
 	threadcreate(control, nil, 32*1024);
 	threadcreate(x11listen, nil, 32*1024);
@@ -263,26 +249,24 @@ sysfatal9(char *fmt, ...)
 	sysfatal(buf);
 }
 
-// FIXME redo like /sys/src/cmd/mkdir.c:/^mkdirp
 void
 mkdir_p(char *path, mode_t mode)
 {
-	char *p = estrdup(path), *slash;
+	char *slash = path;
 	if(strlen(path) == 0) sysfatal9("mkdir_p empty path");
-	slash = p;
 	for(;;){
 		slash = strchr(slash+1, '/');
 		if(slash != nil) *slash = '\0';
-		if(mkdir(p, mode) < 0 && errno !=EEXIST)
-			sysfatal9("handle: mkdir %s: %r", p);
+		if(mkdir(path, mode) < 0 && errno !=EEXIST)
+			sysfatal9("mkdir_p: mkdir %s: %r", path);
 		if(slash == nil) break;
 		*slash = '/';
 	}
-	free(p);
 }
 
 // Takes/release a lockfile unique to our progname and user
 // Pass 1 to take, 0 to release
+// Using a lock file so it works with multiple server instances
 void
 configlock(int take)
 {
@@ -303,7 +287,7 @@ configlock(int take)
 }
 
 // Looks in /tmp/.X11-unix/ for an avalaible socket in our range,
-// creates a socket.
+// creates a socket, updates S.pxy* globals
 // Returns -1 on error.
 int
 createpxysock()
@@ -336,7 +320,7 @@ createpxysock()
 	S.pxyfd = afd;
 	S.pxydpy = dpy;
 	S.pxydir = strdup(adir);
-	return 1;
+	return 0;
 }
 
 // Reads from the log fd (passed as param) into the log file
@@ -358,9 +342,8 @@ logsink(void *arg)
 		int n = ioread(io, fd, buf, sizeof(buf)-1);
 		if(n <= 0) break;
 		int w = iowrite(io, outfd, buf, n);
-		if(w != n){
+		if(w != n)
 			fprint(2, "logsink: wrote %d instead of %d\n", w, n);
-		}
 	}
 }
 
@@ -425,7 +408,7 @@ waitforvnc()
 		iosleep(io, 100);
 	}
 	if(1){
-		// FIXME fragile value, should poll instead
+		// FIXME fragile machine-specific value, should poll instead
 		iosleep(io, VNCWAITMS);
 	}else{
 		// FIXME not working
@@ -497,49 +480,43 @@ proxy(void *arg)
 		tv.tv_usec = 0;
 		retval = ioselect(io, maxfd+1, &rfds, &tv);
 		if(retval < 0) sysfatal9("proxy: select: %r");
-		if(retval == 0){
-//			dbg("proxy: select timeout...\n");
-			continue;
-		}
-		if(FD_ISSET(ctx->pxyfd, &rfds)){
+		if(retval == 0) continue; // select timeout
+		if(FD_ISSET(ctx->pxyfd, &rfds))
 			if(proxychunk(io, ctx->pxyfd, ctx->vncfd) < 0) break;
-		}
-		if(FD_ISSET(ctx->vncfd, &rfds)){
+		if(FD_ISSET(ctx->vncfd, &rfds))
 			if(proxychunk(io, ctx->vncfd, ctx->pxyfd) < 0) break;
-		}
 	}
 	ioclose(io, ctx->pxyfd);
 	ioclose(io, ctx->vncfd);
 	closeioproc(io);
 	sendul(ctx->chan, 0);
-//	dbg("proxy: loop ended\n");
 }
 
 typedef struct {
 	int lfd;
 	char ldir[40];
-} X11handleContext;
+} X11connContext;
 
-// Handles one connection to the proxy socket:
+// Handles a connection to the proxy socket:
 // - starts vncserver if first connection
 // - proxies to the vnc socket
 // - asks the 9 client to start the vnc viewer
 // - on closing the last connection, stops viewer and server
 void
-x11handle(void *arg)
+x11conn(void *arg)
 {
-	X11handleContext *ctx = arg;
+	X11connContext *ctx = arg;
 	Ioproc *io = ioproc();
 
 	int cfd = ioaccept(io, ctx->lfd, ctx->ldir);
-	qlock(&x11lck); // start vnc server once
+	qlock(&S.x11lck); // start vnc server once
 	S.x11count++;
 	if(cfd < 0){
-		error("x11handle: ioaccept %r\n");
+		error("x11conn: ioaccept %r\n");
 		goto out;
 	}
 
-//	dbg("x11handle: lfd=%d x11count=%d\n", ctx->lfd, S.x11count);
+//	dbg("x11conn: lfd=%d x11count=%d\n", ctx->lfd, S.x11count);
 	int startviewer = 0;
 	if(S.x11count == 1){
 		startviewer = 1;
@@ -547,22 +524,23 @@ x11handle(void *arg)
 		getwinsize(winsize, sizeof(winsize));
 		esnprint(colondpy, sizeof(colondpy), ":%d", S.vncdpy);
 		int fds[] = { dup(0, -1), dup(S.logfd, -1), dup(S.logfd, -1) };
-		dbg("x11handle: spawning vncserver %s %s\n",
+		dbg("x11conn: spawning vncserver %s %s\n",
 			colondpy, winsize);
 		if(threadspawnl(fds,
 			"/usr/bin/vncserver", "vncserver",
 			colondpy, "-fg", "-autokill", "-geometry", winsize,
 			NULL) < 0)
-			sysfatal9("x11handle: error starting vncserver: %r");
+			sysfatal9("x11conn: error starting vncserver: %r");
 	}
 
-	if(waitforvnc() < 0){
-		error("x11handle: vnc socket not appearing\n");
+	int novnc = (waitforvnc() == -1);
+	qunlock(&S.x11lck);
+	if(novnc){
+		error("x11conn: vnc socket not appearing\n");
 		// maybe we didn't wait enough, don't leave a vnc hanging
 		killvnc();
 		goto out;
 	}
-	qunlock(&x11lck);
 
 	if(startviewer){
 		char msg[20];
@@ -574,7 +552,7 @@ x11handle(void *arg)
 	esnprint(vncaddr, sizeof(vncaddr), "unix!/tmp/.X11-unix/X%d",
 		S.vncdpy);
 	int vncfd = iodial(io, vncaddr, 0, 0, 0);
-	if(vncfd < 0) sysfatal9("x11handle: vnc dial %r");
+	if(vncfd < 0) sysfatal9("x11conn: vnc dial %r");
 
 	Channel *donechan = chancreate(sizeof(int), 0);
 	ProxyContext proxyctx = {
@@ -589,14 +567,14 @@ x11handle(void *arg)
 	ioclose(io, cfd);
 out:
 	S.x11count--;
-	dbg("x11handle: closing x11count=%d\n", S.x11count);
+	dbg("x11conn: closing x11count=%d\n", S.x11count);
 	if(S.x11count == 0) killvnc();
 	ioclose(io, ctx->lfd);
 	closeioproc(io);
 	free(ctx);
 }
 
-// Listens on the vnc proxy socket, delegates to x11handle()
+// Listens on the vnc proxy socket, delegates to x11conn()
 void
 x11listen(void *arg)
 {
@@ -604,74 +582,18 @@ x11listen(void *arg)
 	dbg("x11listen: pxydpy=%d vncdpy=%d\n", S.pxydpy, S.vncdpy);
 
 	for(;;){
-		X11handleContext *x11ctx = emalloc(sizeof(X11handleContext));
+		X11connContext *x11ctx = emalloc(sizeof(X11connContext));
 		x11ctx->lfd = iolisten(io, S.pxydir, x11ctx->ldir);
 		if(x11ctx->lfd < 0){
 			error("x11listen: iolisten %r\n");
 			continue;
 		}
-		threadcreate(x11handle, x11ctx, 8192);
+		threadcreate(x11conn, x11ctx, 8192);
 	}
 	closeioproc(io);
 }
 
-// Mounts the plan9 fs on /9 by running commands srv and 9pfuse
-void
-fuse(char* host, int port)
-{
-	char addr[64];
-	char srvname[50];
-	char srvpath[100];
-	char p9pns[100];
-
-	dbg("fuse: file server %s:%d\n", host, port);
-
-	esnprint(p9pns, sizeof p9pns, "%s/ns", tmpdir);
-	mkdir_p(p9pns, 0700);
-	putenv("NAMESPACE", p9pns);
-
-	// lx_HOST_PORT
-	esnprint(srvname, sizeof(srvname), "lx_%s_%d", host, port);
-	// NAMESPACE/lx_HOST_PORT
-	esnprint(srvpath, sizeof(srvpath), "%s/%s", p9pns, srvname);
-
-	esnprint(addr, sizeof(addr), "tcp!%s!%d", host, port);
-	dbg("fuse: exec: srv %s %s\n", addr, srvname);
-	if(unlink(srvpath) < 0 && errno != ENOENT)
-		sysfatal9("fuse: unlink %s: %r", srvpath);
-
-	// FIXME create p9prun(..), or have loop here
-	char srvbin[200];
-	esnprint(srvbin, sizeof srvbin, "%s/bin/srv", plan9dir);
-	Channel *chan = threadwaitchan();
-	int fds[] = { dup(0, -1), dup(S.logfd, -1), dup(S.logfd, -1) };
-	int srvpid = threadspawnl(fds, srvbin, "srv", addr, srvname, NULL);
-	if(srvpid < 0)
-		sysfatal9("fuse: cannot run %s: %r", srvbin);
-	Waitmsg *w = recvp(chan);
-	if(w == nil) sysfatal9("fuse: srv recvp: %r");
-	if(strlen(w->msg) > 0)
-		sysfatal9("fuse: error running 'srv %s %s' failed with status %s",
-			addr, srvname, w->msg);
-	free(w);
-
-	char pfusebin[200];
-	esnprint(pfusebin, sizeof pfusebin, "%s/bin/9pfuse", plan9dir);
-	dbg("fuse: exec: 9pfuse '%s' '%s'\n", srvpath, NINEMNT);
-	int fds2[] = { dup(0, -1), dup(S.logfd, -1), dup(S.logfd, -1) };
-	int fusepid = threadspawnl(fds2, pfusebin, "9pfuse",
-		srvpath, S.mnt, NULL);
-	if(fusepid < 0)
-		sysfatal9("fuse: threadspawnd %s: %r", pfusebin);
-	w = recvp(chan);
-	if(w == nil) sysfatal9("fuse: 9pfuse recvp: %r");
-	if(strlen(w->msg) > 0)
-		sysfatal9("fuse: '9pfuse %s %s' failed with status %s",
-			srvpath, S.mnt, w->msg);
-	free(w);
-}
-
-// Runs the command, on exit sends the status to the 9 client
+// Runs the Linux command, on exit sends the status to the 9 client
 void
 command(char *cwd, char **argv)
 {
@@ -757,7 +679,7 @@ getparams()
 		char msg[ERRMAX];
 		rerrstr(msg, sizeof(msg));
 		write(S.fd9, msg, strlen(msg));
-		sysfatal9("handle: %s", msg);
+		sysfatal9("getparams: %s", msg);
 	}
 	dbg("getparams: params:%s\n", input);
 	char *lines[1000];
@@ -766,7 +688,7 @@ getparams()
 	if(linescount < 7){
 		char *msg = "not enough params";
 		write(S.fd9, msg, strlen(msg));
-		sysfatal9("handle: %s", msg);
+		sysfatal9("getparams: %s", msg);
 	}
 
 	Params params = {
@@ -781,24 +703,48 @@ getparams()
 	return params;
 }
 
-// Mounts /mnt/lx/HOST/ID on /9, then does requested bind mounts
+// Mounts plan 9 fs on /9, then does bind mounts
 void
-setupns(char *mounts)
+setupns(char *host, int port, char *mounts)
 {
 	if(strchr(mounts, ' ') != nil)
 		sysfatal9("spaces disallowed in mounts: %s", mounts);
 
+	// New mount namespace
 	int status = unshare(CLONE_NEWNS);
 	if(status < 0) sysfatal9("setupns: unshare: %r");
 
-	// Required for the next mounts to work, on archlinux at least
+	// Required for the mounts to work after unshare call,
+	// on archlinux at least
 	if(mount("none", "/", NULL, MS_REC|MS_PRIVATE, NULL) < 0)
 		sysfatal9("setupns: mount /: %r");
 
-	// Bind mount /mnt/lx/HOST/ID on /9
-	if(mount(S.mnt, NINEMNT, "ext4", MS_BIND|MS_PRIVATE, NULL) < 0)
-		sysfatal9("setupns: mount %s %s: %r", S.mnt, NINEMNT);
+	// Mounts the plan9 fs on /9 by running p9p commands srv and 9pfuse
+	{
+		char addr[64];
+		char srvname[50];
+		char srvpath[100];
+		char p9pns[100];
+		dbg("fuse: file server %s:%d\n", host, port);
 
+		esnprint(p9pns, sizeof p9pns, "%s/ns", tmpdir);
+		mkdir_p(p9pns, 0700);
+		putenv("NAMESPACE", p9pns);
+
+		esnprint(srvname, sizeof(srvname), "%s_%d", host, port);
+		esnprint(srvpath, sizeof(srvpath), "%s/%s", p9pns, srvname);
+
+		esnprint(addr, sizeof(addr), "tcp!%s!%d", host, port);
+		if(unlink(srvpath) < 0 && errno != ENOENT)
+			sysfatal9("fuse: unlink %s: %r", srvpath);
+
+		dbg("fuse: srv %s %s\n", addr, srvname);
+		p9prun("srv", addr, srvname);
+		dbg("fuse: 9pfuse %s %s\n", srvpath, NINEMNT);
+		p9prun("9pfuse", srvpath, NINEMNT);
+	}
+
+	// Do the requested bind-mounts from /9/X to /X
 	// "/A:/a,/B:/b"
 	char *entries[10];
 	int n = getfields(mounts, entries, 10, 1, ",");
@@ -816,7 +762,25 @@ setupns(char *mounts)
 	}
 }
 
-// Connects 0,1,2 to /9/fd/10,11,12
+// Runs p9p command, sysfatal on error
+void
+p9prun(char *a0, char *a1, char *a2)
+{
+	char bin[200];
+	esnprint(bin, sizeof bin, "%s/bin/%s", plan9dir, a0);
+	Channel *chan = threadwaitchan();
+	int fds[] = { dup(0, -1), dup(S.logfd, -1), dup(S.logfd, -1) };
+	int srvpid = threadspawnl(fds, bin, a0, a1, a2, NULL);
+	if(srvpid < 0)
+		sysfatal9("p9prun: cannot run %s: %r", bin);
+	Waitmsg *w = recvp(chan);
+	if(w == nil) sysfatal9("p9prun: %s recvp: %r", a0);
+	if(strlen(w->msg) > 0)
+		sysfatal9("p9prun: %s failed with status %s", a0, w->msg);
+	free(w);
+}
+
+// Connects 0, 1, 2 to /9/fd/20,21,22
 void
 setupio()
 {
@@ -828,10 +792,11 @@ setupio()
 	};
 	for(int fd = 0; fd < 3; fd++){
 		char path[40];
-		esnprint(path, sizeof(path), "%s/fd/%d", NINEMNT, fd+10);
+		esnprint(path, sizeof(path), "%s/fd/%d", NINEMNT, FDOFF+fd);
 		int newfd = open(path, modes[fd]);
 		if(newfd < 0) sysfatal9("setupio: open %s: %r", path);
 		if(dup(newfd, fd) < 0) sysfatal9("setupio: dup: %r");
+		close(newfd);
 	}
 }
 
@@ -840,13 +805,13 @@ void
 handlenote(char *note)
 {
 	int sig = 0;
-	dbg("handlenote: handling '%s' pid=%d\n", note, S.pid);
+	dbg("handlenote: '%s' pid=%d\n", note, S.pid);
 	if(strcmp("int", note) == 0) sig = SIGINT;
 	else if(strcmp("hup", note) == 0) sig = SIGHUP;
+	else if(strcmp("kill", note) == 0) sig = SIGKILL;
 	else error("handlenote: unknown note '%s'\n", note);
 	if(sig != 0){
-		dbg("handlenote: kill leaderpid=%d sig=%d\n",
-			S.pid, sig);
+		dbg("handlenote: kill leaderpid=%d sig=%d\n", S.pid, sig);
 		kill(-S.pid, sig);
 	}
 }
@@ -895,16 +860,14 @@ cleanup()
 	// stopping the fs on 9. To help 9pfuse realise the
 	// remote server is dead and terminate, we access a random
 	// path under the mount point.
+	char path[40];
+	esnprint(path, sizeof(path), "%s/rc", NINEMNT);
 	for(;;){
-		char path[40];
-		esnprint(path, sizeof(path), "%s/rc", NINEMNT);
 		int fd = open(path, OREAD);
 		close(fd);
 		if(fd < 0) break;
 		sleep(50);
 	}
-
-	dbg("cleanup complete\n");
 }
 
 void
@@ -917,8 +880,6 @@ usage()
 void
 threadmain(int argc, char **argv)
 {
-	int acfd, lcfd;
-	char adir[40], ldir[40], addr[50];
 	char *interface = "localhost", *port = DEFAULTPORT;
 
 	S.fd9 = -1;
@@ -951,12 +912,13 @@ threadmain(int argc, char **argv)
 	tmpdir = tmp;
 	mkdir_p(tmpdir, 0700);
 
+	char adir[40], ldir[40], addr[50];
 	esnprint(addr, sizeof(addr), "tcp!%s!%s", interface, port);
 	dbg("threadmain: listening on %s\n", addr);
-	acfd = announce(addr, adir);
+	int acfd = announce(addr, adir);
 	if(acfd < 0) sysfatal("threadmain: announce %s: %r", addr);
 	for(;;){
-		lcfd = listen(adir, ldir);
+		int lcfd = listen(adir, ldir);
 		if(lcfd < 0) sysfatal("threadmain: listen on %s: %r", addr);
 		pid_t pid = rfork(RFFDG|RFPROC|RFNOWAIT|RFNOTEG);
 		switch(pid){
@@ -967,7 +929,6 @@ threadmain(int argc, char **argv)
 			if(S.fd9 < 0) sysfatal("threadmain: accept: %r");
 			dbg("threadmain: S.fd9=%d\n", S.fd9);
 			session();
-			dbg("threadmain: post-handle\n");
 			close(S.fd9);
 			threadexitsall(0);
 		default:

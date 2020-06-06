@@ -6,13 +6,7 @@ include config.mk
 SRC = drw.c lx-dwm.c util.c
 OBJ = ${SRC:.c=.o}
 
-all: options lx-dwm
-
-options:
-	@echo lx-dwm build options:
-	@echo "CFLAGS   = ${CFLAGS}"
-	@echo "LDFLAGS  = ${LDFLAGS}"
-	@echo "CC       = ${CC}"
+all: lx-dwm
 
 .c.o:
 	${CC} -c ${CFLAGS} $<
@@ -37,15 +31,10 @@ dist: clean
 	rm -rf lx-dwm-${VERSION}
 
 install: all
-	mkdir -p ${DESTDIR}${PREFIX}/bin
 	cp -f lx-dwm ${DESTDIR}${PREFIX}/bin
 	chmod 755 ${DESTDIR}${PREFIX}/bin/lx-dwm
-#	mkdir -p ${DESTDIR}${MANPREFIX}/man1
-#	sed "s/VERSION/${VERSION}/g" < lx-dwm.1 > ${DESTDIR}${MANPREFIX}/man1/lx-dwm.1
-#	chmod 644 ${DESTDIR}${MANPREFIX}/man1/lx-dwm.1
 
 uninstall:
-	rm -f ${DESTDIR}${PREFIX}/bin/lx-dwm\
-		${DESTDIR}${MANPREFIX}/man1/lx-dwm.1
+	rm -f ${DESTDIR}${PREFIX}/bin/lx-dwm
 
 .PHONY: all options clean dist install uninstall

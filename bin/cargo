@@ -1,0 +1,2 @@
+#!/bin/rc
+exec lx -D cargo $*

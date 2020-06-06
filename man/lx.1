@@ -34,33 +34,17 @@ connected to the remote process, and with the local namespace
 available from Linux under mount point
 .BR /9 .
 .PP
-A mechanism is provided to bind-mount select sub-directories
-of
-.BR /9
-in the Linux process namespace, allowing a more natural
-integration with the origin Plan 9 environment. For example
-you may want to use path
-.B /usr/USER
-to access your Plan 9 home directory from the Linux
-process.
 .B Lx
 attempts to preserve the Plan 9 current directory when starting
 the Linux command.
 .PP
-If the Linux process attempts a connection to an X11 display,
-a VNC server is started on the fly, and a viewer is started
-in the Plan 9 window.
-.PP
 When
 .IR lx
-receives an interrupt note, it sends signal INT to the remote
-process. If it receives two interrupts less than .3 second apart,
-it sends HUP.
-FIXME write about session leader.
+receives in a short interval 1 (resp. 2, 3) interrupt notes, it
+sends signal INT (resp. HUP, KILL) to the remote process group.
 .PP
 If a command is not specified, a default command
-from the configuration file will be run \- this will
-typically be a shell.
+from the configuration file will be run.
 .PP
 The options to
 .IR lx
@@ -97,72 +81,6 @@ IP address to listen on, default is localhost.
 .TP
 .B  -p
 Port to listen on, default is 9000.
-.SH PLAN 9 SETUP
-A configuration file must be provided, see lx(6).
-.SH LINUX SETUP
-.TP
-Plan 9 from User Space
-The namespace exported from Plan 9 is mounted on Linux
-using the
-.B 9pfuse
-command. Environment variable PLAN9 must be defined when
-starting
-.B lxsrv,
-pointing to the p9p base directory.
-.TP
-Running rc on Linux
-For the Linux rc to have access to the window history, you can
-add at the beginning of
-.B $PLAN9/bin/wintext
-the following line:
-.B [ -f /9/dev/text ] && exec cat /9/dev/text
-.PP
-Skip the rest of this section if you are not planning to run
-X11 clients.
-.TP
-VNC server
-.B Lx
-has only been tested with
-.B tigervnc,
-but other implementations are expected to work
-with no or little code change.
-.PP
-The
-.B /usr/bin/tigervnc
-script hardcodes a wait of 3 seconds on startup that is
-probably unnecessary on most setups. I reduced it by changing
-line
-	#sleep(3);
-into
-	use Time::HiRes qw(usleep); usleep(100000);
-Only tune this value when you have confirmed proper functionality
-of lx with X11 clients.
-.TP
-VNC startup file
-The following
-.B ~/.vnc/xstartup
-file is sufficient:
-.ft L
-.nf
-#!/bin/sh
-unset SESSION_MANAGER
-unset DBUS_SESSION_BUS_ADDRESS
-xsetroot -solid grey
-xhost +
-lx-dwm # or any other window manager
-.fi
-.TP
-Window manager
-The VNC startup file must run a window manager.
-Any program can be used, but a slightly customised
-version of
-.B dwm
-is provided with the code, which hides unnecessary tag buttons
-and provides another to close the currently selected client.
-To allow coexistence with an existing dwm program, it is called
-.B lx-dwm.
-Build/install it from Linux by running
-.B mk -f mkfile.srv wm.install
 .SH EXAMPLES
 .ft L
 .nf
@@ -176,44 +94,7 @@ Build/install it from Linux by running
 $home/lib/lx \- Configuration file
 .SH SEE ALSO
 lx(6)
-.SH DIAGNOSTICS
-Using
-.B lx
-option
-.B -d
-will show debugging information that can help troubleshoot
-problems.
 .PP
-The client and server maintain log files located under
-.B /tmp/lx.$user,
-resp.
-.B /tmp/lxsrv.$user
-which contain the same information printed out by the client
-when run with option
-.B -d,
-plus some events occurring at the early stage of the connection.
-.PP
-If you get the error "can't open display", it may be that
-the VNC server is too slow to start. Increase VNCWAITMS in
-.B lxsrv.c.
-Note that this will increase the delay before getting the X11
-client displayed.
-.PP
-If you have been killing the server with SIGKILL or if you
-encountered a bug, you may get the error "unable to find
-a free vnc proxy port". You can run on Linux the command 
-.B rm /tmp/.X11-unix/X1??
-to delete all VNC proxy sockets.
-.SH BUGS
-.B Lx
-has not been tested much, bugs are expected.
-.PP
-If an X11 client launched directly from
-.B lx
-prints to stdout/stderr (e.g.
-.B xev
-), the messages will corrupt the display
-of the VNC viewer. Redirect the output if this is a problem.
-.PP
-The p9p graphical programs do not work with lx, because for
-an as yet unknown reason they do not work with VNC.
+See the README for https://github.com/perpen/lx
+.SH DIAGNOSTICS, BUGS
+See the README for https://github.com/perpen/lx

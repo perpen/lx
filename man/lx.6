@@ -2,7 +2,7 @@
 .SH NAME
 lx \- configuration file for lx
 .SH DESCRIPTION
-The file path is
+The configuration is loaded from
 .B $home/lib/lx.
 .PP
 Some options have two forms:
@@ -25,7 +25,8 @@ Specifies the port range to be used for serving the Plan 9
 namespace to Linux. The width of this range will be the maximum
 number of
 .IR lx
-commands that can be run simultaneously.
+commands that can be run simultaneously. On startup `lx` will
+use the first unused port in this range.
 .TP
 .B mounts, HOST.mounts
 Lists the bind-mounts to be performed before running the
@@ -95,5 +96,7 @@ refers to the Plan 9 directory
 .PP
 In both cases the Plan 9 namespace will be exported by running
 exportfs(1) on a port between 3000 and 3049.
-.TH SEE ALSO
+.SH SEE ALSO
 lx(1)
+.PP
+See the README for https://github.com/perpen/lx

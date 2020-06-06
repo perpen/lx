@@ -2,19 +2,19 @@
 
 <$PLAN9/src/mkhdr
 
-# to make it easier to play with multiple versions, compute the name
-# of the binary from the current dir name
-TARG=`{basename $PWD}srv
+NAME=`{cat name}
+TARG=${NAME}srv
 OFILES=lxsrv.$O
 BINDIR=$PLAN9/bin
-CFLAGS='-fsanitize=address'
-LDFLAGS='-lasan'
+#CFLAGS='-fsanitize=address'
+#LDFLAGS='-lasan'
 
 <$PLAN9/src/mkone
 
 install:V: $BIN/$TARG wm.install
 
 $BIN/$TARG:	o.$TARG
+	test -n "$NAME"
 	pkill $TARG || true
 	cp $prereq $BIN/$TARG
 	sudo setcap cap_sys_admin+eip $BIN/$TARG

@@ -1,15 +1,15 @@
 #!/bin/rc
-#flag x +
+# Opens the parameter in a new tab
+# Assumes a running firefox instance
+
 flag e +
+
+# On 9
 if(! test -d /9){
-	# If the script fails on unix, assume there is no running
-	# instance, start firefox.
-	run=window
-	lx2 /9$0 $* || $run lx2 firefox $*
-	#read
-	exit $status
+	exec lx /9$0 $*
 }
 
+# On Linux
 pid=`{pgrep -f '/usr/lib/firefox/firefox' | tail -1}
 if(~ $pid ''){
     echo $0: no firefox process
@@ -17,5 +17,4 @@ if(~ $pid ''){
 }
 DISPLAY=`{cat /proc/$pid/environ | tr '\0' '\n' \
 	| grep '^DISPLAY=' | sed 's/.*=//'}
-#echo DISPLAY: $DISPLAY
 exec firefox $*

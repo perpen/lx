@@ -6,7 +6,10 @@
 #include <bio.h>
 #include <regexp.h>
 #include "procports.h"
- 
+
+#define FDOFF 20
+#define CONNTIMEOUTMS 2000
+
 void* emalloc(int n);
 int edup(int a, int b);
 int esnprint(char *tgt, int max, char *fmt, ...);
@@ -26,7 +29,7 @@ void parseconf(char *path);
 void config(int argc, char **argv);
 
 struct {
-	int minport, maxport, fsport, id, mainfd, cmdlen,
+	int minport, maxport, fsport, mainfd, cmdlen,
 		checkcwd, debug, dbgfd, lckfd;
 	char *srvhost, *srvport, *cbhost, *defcmd, *defmounts,
 		*cwd, *mounts, *progname, *tmpdir;
@@ -64,10 +67,7 @@ void*
 emalloc(int n)
 {
 	void *v = mallocz(n, 1);
-	if(v == nil){
-		abort();
-		sysfatal("out of memory allocating %d", n);
-	}
+	if(v == nil) sysfatal("out of memory allocating %d", n);
 	return v;
 }
 
@@ -109,7 +109,7 @@ logsink(void *arg)
 	char outpath[1000];
 
 	esnprint(outpath, sizeof outpath, "%s/%s.%d.log",
-		g.tmpdir, g.srvhost, g.id);
+		g.tmpdir, g.srvhost, g.fsport);
 	outfd = create(outpath, OWRITE, 0600|DMAPPEND);
 	if(outfd < 0) sysfatal("cannot create %s: %r", outpath);
 
@@ -143,23 +143,35 @@ lxsend(char *msg)
 int
 notehandle(void*, char *note)
 {
-	long spanns = 1000000000/3;
+	long ns = 1000000000/3; // third of a second
 	vlong t;
 
-	if(getpid() != notectx.pid) return 1;
+	if(getpid() != notectx.pid) return 0;
+	if(g.mainfd == -1 && strcmp(note, "alarm") == 0)
+		sysfatal("connection timed out");
+	if(strcmp(note, "interrupt") != 0) return 1;
 	dbg("notehandle: pid=%d note %s\n", getpid(), note);
 
 	t = nsec();
-	if(t - notectx.lasttime > spanns) notectx.count = 0;
-	notectx.lasttime = t;
+	if(t - notectx.lasttime > ns){
+		notectx.count = 0;
+		notectx.lasttime = t;
+	}
 	notectx.count++;
-
-	if(notectx.count > 1){
+	switch(notectx.count){
+	case 1:
+		lxsend("int");
+		break;
+	case 2:
 		fprint(2, "sending SIGHUP\n");
 		lxsend("hup");
-		notectx.count = 0;
-	}else
-		lxsend("int");
+		notectx.lasttime = t;
+		break;
+	case 3:
+		fprint(2, "sending SIGKILL\n");
+		lxsend("kill");
+		break;
+	}
 	return 1;
 }
 
@@ -177,7 +189,7 @@ vncviewer(int dpy)
 		edup(g.dbgfd, 1);
 		edup(g.dbgfd, 2);
 		execl("/bin/vncv", "vncv", vncaddr, NULL);
-		sysfatal("vncviewer: exec: %r");
+		sysfatal("vncviewer: exec vncv %s: %r", vncaddr);
 	}
 }
 
@@ -189,6 +201,7 @@ handlemsg(char *msg)
 	char buf[200];
 	int dpy;
 
+//	dbg("handlemsg: received '%s'\n", msg);
 	if(strlen(msg) >= sizeof(buf)-1)
 		error("handlemsg: msg longer than %d\n", sizeof buf);
 
@@ -214,6 +227,8 @@ remote(void)
 	char *addr, *exitmsg = nil;
 
 	addr = netmkaddr(g.srvhost, nil, g.srvport);
+	g.mainfd = -1;
+	alarm(CONNTIMEOUTMS);
 	g.mainfd = dial(addr, nil, nil, nil);
 	if(g.mainfd < 0) sysfatal("remote: dial %s: %r", addr);
 
@@ -298,8 +313,7 @@ stopfs(void)
 {
 	dbg("stopfs\n");
 	if(getpid() != notectx.pid) return;
-	if(g.mainfd < 0) return;
-	if(hanguplocalport(g.fsport) < 0)
+	if(g.fsport >= 0 && hanguplocalport(g.fsport) < 0)
 		sysfatal("cannot hangup exportfs conn: %r");
 }
 
@@ -310,6 +324,7 @@ configlock(int take)
 	char path[40];
 	esnprint(path, sizeof(path), "%s/lock", g.tmpdir);
 	if(take){
+		assert(g.lckfd == -1);
 		// Try for 10s at least
 		for(int i = 0; i < 200; i++){
 			g.lckfd = create(path, OREAD, 0600|DMEXCL);
@@ -477,8 +492,10 @@ threadmain(int argc, char **argv)
 {
 	char *exitmsg;
 	char tmp[100];
-	int in = 10, out = in+1, err = in+2;
+	int in = FDOFF, out = in+1, err = in+2;
 	int logpipe[2];
+
+	if(rfork(RFFDG|RFNAMEG) < 0) sysfatal("threadmain: rfork: %r");
 
 	quotefmtinstall();
 
@@ -498,13 +515,13 @@ threadmain(int argc, char **argv)
 	ensuredir(g.tmpdir, 0700);
 
 	g.fsport = getport();
-	g.id = g.fsport - g.minport;
 
 	pipe(logpipe);
 	g.dbgfd = logpipe[0];
 	proccreate(logsink, &logpipe[1], 8*1024);
 
 	notectx.pid = getpid();
+	notectx.lasttime = 0;
 	startfs();
 	atexit(stopfs);
 	assert(atnotify(notehandle, 1) > 0);

@@ -1,28 +1,53 @@
-all:V: both.all
-install:V: both.install
+usage:VQ:
+	echo 'usage: mk clt.TARGET or srv.TARGET or both.TARGET'
+	echo '	e.g. to install the client: "mk clt.install"'
+	echo 'This mkfile is meant to be used from Plan 9, not Linux'
+	echo 'The srv.* targets require a working lx installation.'
 
-both.%:V: clt.% srv.%
+#both.%:V: clt.% srv.%
+both.%:V:
+	mk -f mkfile.clt $stem
+	lx mk -f mkfile.srv $stem
 
 clt.%:V:
 	mk -f mkfile.clt $stem
+
 srv.%:V:
 	lx mk -f mkfile.srv $stem
 
+#### The targets below are helpers used during development
+
+# Run install on change
 watch:V:
-	watch *.[ch] -- mk install
+	while() {
+		newsum=`{ls -q mkfile* *.[ch] | sum | awk '{print $1}'}
+		if(! ~ $newsum $oldsum) {
+			oldsum=$newsum
+			echo '########' `{date}
+			mk both.install
+		}
+		sleep 2
+	}
+
+# Restart the server on build, see mkfile.srv:/pkill
+# This assumes the current name is not 'lx'
+# FIXME doesn't work if master lxsrv is running??
+srvloop:V:
+	exe=`{cat name}^srv
+	lx pkill $exe || echo -n
+	while(){ echo '####' `{date}; lx $exe -p 8000 || sleep 1 }
 
 gitpush:V:
-	git/commit README acid mkfile* sigtest *.[ch] \
-		bin/* man/lx.^(1 6) \
-		`{ls lx-dwm | grep -v '/(config.h|.*\.o|lx-dwm)$'}
+	# Do not commit ./name as its content must stay 'lx' in the
+	# master branch.
+	git/commit `{git/walk | awk '{print $2}' | grep -v '^name$'}
 	git/push
 
-# merges beta into master
 gitmerge:V:
-	b=`{git/branch}
-	git/branch beta
-	git/pull
 	git/branch master
+	echo lx > name
 	git/merge beta
+	echo lx > name
 	git/push
-	git/branch $b
+	git/branch beta
+	echo lx2 > name
