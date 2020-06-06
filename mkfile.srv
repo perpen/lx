@@ -1,0 +1,24 @@
+# for building the server from linux, using p9p
+
+<$PLAN9/src/mkhdr
+
+# to make it easier to play with multiple versions, compute the name
+# of the binary from the current dir name
+TARG=`{basename $PWD}srv
+OFILES=lxsrv.$O
+BINDIR=$PLAN9/bin
+CFLAGS='-fsanitize=address'
+LDFLAGS='-lasan'
+
+<$PLAN9/src/mkone
+
+install:V: $BIN/$TARG wm.install
+
+$BIN/$TARG:	o.$TARG
+	pkill $TARG || true
+	cp $prereq $BIN/$TARG
+	sudo setcap cap_sys_admin+eip $BIN/$TARG
+
+wm.%:V:
+	cd lx-dwm
+	make $stem

@@ -1,0 +1,99 @@
+.TH LX 6
+.SH NAME
+lx \- configuration file for lx
+.SH DESCRIPTION
+The file path is
+.B $home/lib/lx.
+.PP
+Some options have two forms:
+.I option=value
+and
+.I HOST.option=value.
+The first form provides a default value, applicable to any
+host; the second is used to override the default for a specific
+host.
+.I HOST
+can be a unqualified host name, an FQDN or an IP address.
+.TP
+.B default-host
+Specifies the Linux host to connect to if option
+.IR -h
+is not provided.
+.TP
+.B minport, maxport
+Specifies the port range to be used for serving the Plan 9
+namespace to Linux. The width of this range will be the maximum
+number of
+.IR lx
+commands that can be run simultaneously.
+.TP
+.B mounts, HOST.mounts
+Lists the bind-mounts to be performed before running the
+process. This should be a comma-separated list of colon-separated
+pairs of directories. For example for the value
+.L /a:/b,/c:/d
+the files under
+.L /a
+(resp.
+.L /c
+)
+on Plan 9 will be available under
+.L /b
+(resp.
+.L /d
+) to the Linux process. The directories must exist and be
+permissioned correctly.
+.TP
+.B command, HOST.command
+The command that should be run if none is provided on the
+.IR lx
+command line. Single quotes may be used.
+.TP
+.B port, HOST.port
+The port to listen on \- defaults to 9000
+.SH EXAMPLE
+.TP
+Assuming the file contains:
+.ft L
+.nf
+default-host=rabbit
+minport=3000
+maxport=3049
+mounts=/usr/roger:/usr/roger
+command=rc -il
+rabbit.port=7000
+turtle.port=8000
+turtle.mounts=/usr/roger:/usr/roger,/sys/src:/usr/src/plan9
+.fi
+
+.PP
+Then the command
+.B lx
+will connect to machine
+.B rabbit
+on port 7000 and run the command
+.B rc -il
+in a Linux namespace where
+.B /usr/roger
+refers to the Plan 9 directory
+.B /usr/roger.
+.PP
+The command
+.B lx -h turtle
+will connect to machine
+.B turtle
+on port 8000 and run the command
+.B rc -il
+in a Linux namespace where
+.B /usr/roger
+refers to the Plan 9 directory
+.B /usr/roger,
+and
+.B /usr/src/plan9
+refers to the Plan 9 directory
+.B /sys/src.
+.PP
+In both cases the Plan 9 namespace will be exported by running
+exportfs(1) on a port between 3000 and 3049.
+.TH SEE ALSO
+lx(1)
