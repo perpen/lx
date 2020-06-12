@@ -805,11 +805,15 @@ void
 handlenote(char *note)
 {
 	int sig = 0;
-	dbg("handlenote: '%s' pid=%d\n", note, S.pid);
-	if(strcmp("int", note) == 0) sig = SIGINT;
-	else if(strcmp("hup", note) == 0) sig = SIGHUP;
-	else if(strcmp("kill", note) == 0) sig = SIGKILL;
-	else error("handlenote: unknown note '%s'\n", note);
+	dbg("handlenote: '%s'\n", note);
+	if(strcmp("int", note) == 0)
+		sig = SIGINT;
+	else if(strcmp("hup", note) == 0)
+		sig = SIGHUP;
+	else if(strcmp("kill", note) == 0)
+		sig = SIGKILL;
+	else
+		error("handlenote: unknown note '%s'\n", note);
 	if(sig != 0){
 		dbg("handlenote: kill leaderpid=%d sig=%d\n", S.pid, sig);
 		kill(-S.pid, sig);

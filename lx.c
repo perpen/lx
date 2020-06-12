@@ -146,7 +146,7 @@ notehandle(void*, char *note)
 	long ns = 1000000000/3; // third of a second
 	vlong t;
 
-	if(getpid() != notectx.pid) return 0;
+	if(getpid() != notectx.pid) return 1;
 	if(g.mainfd == -1 && strcmp(note, "alarm") == 0)
 		sysfatal("connection timed out");
 	if(strcmp(note, "interrupt") != 0) return 1;
@@ -482,7 +482,7 @@ config(int argc, char **argv)
 void
 usage(void)
 {
-	fprint(2, "usage: %s [-d] [-h host] [-c dir] [-D] [-m mounts] cmd ...\n",
+	fprint(2, "usage: %s [-Dd] [-c dir] [-h host] [-m mounts] cmd ...\n",
 		argv0);
 	threadexitsall("usage");
 }

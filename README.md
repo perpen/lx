@@ -36,8 +36,8 @@ Use cases / examples
 - Write Linux programs from the comfort of Plan 9
 - Write Linux programs accessing e.g. `/dev/draw` or `/dev/net`.
   Then in a way `lx` can be seen as implementing a new objtype:
-  uglier, slower and limited, but allowing us to use more
-  programming languages than before.
+  uglier, slower and limited, but at least giving us access to
+  more programming languages than before.
 
 Mechanism
 ---------
