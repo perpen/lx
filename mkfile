@@ -24,15 +24,15 @@ watch:V:
 		if(! ~ $newsum $oldsum) {
 			oldsum=$newsum
 			echo '########' `{date}
-			mk both.install
+			mk both.install || echo oops
 		}
 		sleep 2
 	}
 
 # Restart the server on build, see mkfile.srv:/pkill
 # This assumes the current name is not 'lx'
-# FIXME doesn't work if master lxsrv is running??
 srvloop:V:
+	FIXME weirdly 9pfuse fails when lx2srv is started from here
 	exe=`{cat name}^srv
 	lx pkill $exe || echo -n
 	while(){ echo '####' `{date}; lx $exe -p 8000 || sleep 1 }
