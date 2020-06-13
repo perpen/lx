@@ -441,7 +441,7 @@ proxychunk(Ioproc *io, int src, int tgt)
 	char buf[8192];
 	int n = ioread(io, src, buf, sizeof(buf));
 	if(n < 0){
-		error("proxychunk: read: %r\n");
+		dbg("proxychunk: read: %r\n");
 		return -1;
 	}
 	if(n == 0){
@@ -481,7 +481,7 @@ proxy(void *arg)
 		retval = ioselect(io, maxfd+1, &rfds, &tv);
 		if(retval < 0){
 			error("proxy: select %d %d: %r\n", ctx->pxyfd, ctx->vncfd);
-			break;
+			break; // FIXME or continue?
 		}
 		if(retval == 0) continue; // select timeout
 		if(FD_ISSET(ctx->pxyfd, &rfds))
@@ -590,7 +590,7 @@ x11listen(void *arg)
 		x11ctx->lfd = iolisten(io, S.pxydir, x11ctx->ldir);
 		if(x11ctx->lfd < 0){
 			error("x11listen: iolisten %r\n");
-			continue;
+			break;
 		}
 		threadcreate(x11conn, x11ctx, 8192);
 	}

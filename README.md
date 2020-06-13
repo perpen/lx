@@ -7,7 +7,7 @@ command `cpu(1)`:
 - The `lx` stdin/out/err are connected to the remote process, and
   notes received by `lx` are translated into signals to the
   Linux process
-- The current namespace of the Plan 9 client is available
+- The specific namespace of the Plan 9 client is available
   to the Linux process under `/9`; with configuration it is
   possible to have some directories available from Linux under
   the same path as on Plan 9 (e.g. `$home`).
@@ -150,7 +150,7 @@ Create/edit `~/.vnc/xstartup` with this content:
 unset SESSION_MANAGER
 unset DBUS_SESSION_BUS_ADDRESS
 xsetroot -solid grey
-xhost +
+xhost +local:
 lx-dwm # or any other window manager
 ```
 
@@ -192,6 +192,11 @@ commands. These are the known problems:
   `vncv` display. Redirect the output if this is a problem.
 - The p9p graphical programs do not work, because they do not work
   with VNC server (try others?)
+- Some X11 clients (only `llpp` so far) insist on connecting to
+  the X server using an abstract socket. But our proxy socket
+  is created using p9p's `announce`, which does not support
+  abstract. To fix this we'd need to use the linux `socket`
+  syscall directly.
 - Passing environment variables to a Linux command is currently
   difficult and requires clunky command lines like
   `lx bash -c 'X=1; echo $X'`.
@@ -203,8 +208,7 @@ commands. These are the known problems:
 - The p9p command `mc` does not know the width of the Plan 9
   window, and uses the width of the terminal that `lxsrv` was
   started from.
-- Insecure: no auth on server request; VNC startup file runs
-  `xhost +`
+- Insecure: no auth on server request; no encryption.
 
 ### Workaround for filesystem issues
 
@@ -251,7 +255,8 @@ The client and server maintain session log files
 `/tmp/lxsrv.$user/*.log` which contain the
 same information printed out by the client when run with
 option `-d`, plus some events occurring when there is no established
-connection to the client's stderr.
+connection to the client's stderr. If you are having a problem with
+VNC you may want to check its log under `~/.vnc`.
 
 `lx` does not provide a pty - if you want a unix shell session or
 terminal emulation, use `ssh(1)` and `vt(1)`.
@@ -290,4 +295,5 @@ I keep two windows open:
 - Another running `mk srvloop`, which continuously runs `lx2srv`
   on port 8000, so as not to conflict with `lxsrv` which uses the
   default port of 9000. FIXME 9pfuse breaks if master lxsrv is
-  already running??
+  already running?? Until fixed run from Linux:
+  ``while(){ echo '####' `{date}; lx2srv -p 8000 || sleep 1 }``
