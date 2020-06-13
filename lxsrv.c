@@ -479,7 +479,10 @@ proxy(void *arg)
 		tv.tv_sec = 5;
 		tv.tv_usec = 0;
 		retval = ioselect(io, maxfd+1, &rfds, &tv);
-		if(retval < 0) sysfatal9("proxy: select: %r");
+		if(retval < 0){
+			error("proxy: select %d %d: %r\n", ctx->pxyfd, ctx->vncfd);
+			break;
+		}
 		if(retval == 0) continue; // select timeout
 		if(FD_ISSET(ctx->pxyfd, &rfds))
 			if(proxychunk(io, ctx->pxyfd, ctx->vncfd) < 0) break;
@@ -513,6 +516,7 @@ x11conn(void *arg)
 	S.x11count++;
 	if(cfd < 0){
 		error("x11conn: ioaccept %r\n");
+		qunlock(&S.x11lck);
 		goto out;
 	}
 
