@@ -233,9 +233,9 @@ to my Plan 9 `$lib/profile`:
 ```
 aux/stub -d /home
 srv tcp!mylinuxhost!49151 u9fs # not using 9fs b/c of my custom port
-mkdir -p /tmp/u9fs
-mount -c /srv/u9fs /tmp/u9fs
-bind /tmp/u9fs/home /home
+mkdir -p /mnt/u9fs
+mount -c /srv/u9fs /mnt/u9fs
+bind /mnt/u9fs/home /home
 ```
 
 Because you will forget to type `lx` before `go` or `cargo`,
