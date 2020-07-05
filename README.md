@@ -186,6 +186,9 @@ Bugs
 
 `lx` has only been tested in one environment and with a few
 commands. These are the known problems:
+- Regression: Firefox errors after ~30mn of intensive use (bad file
+  descriptor) then needs to be restarted. A workaround I refuse to
+  use it to start it from dwm.
 - If the `lx` client is slayed, a few processes are leaked
 - If an X11 client launched directly from `lx` prints to
   stdout/stderr (e.g. `xev`), the messages will corrupt the

@@ -62,7 +62,7 @@ void logsink(void *arg);
 void getwinsize(char *out, int len);
 void killvnc();
 int waitforvnc();
-int proxychunk(Ioproc *io, int src, int tgt);
+int proxychunk(Ioproc *io, int src, int tgt, char *label);
 void proxy(void *arg);
 void x11conn(void *arg);
 void x11listen(void *arg);
@@ -436,21 +436,22 @@ waitforvnc()
 
 // Forwards a readfull from src to tgt, returns -1 on eof or error
 int
-proxychunk(Ioproc *io, int src, int tgt)
+proxychunk(Ioproc *io, int src, int tgt, char *label)
 {
 	char buf[8192];
 	int n = ioread(io, src, buf, sizeof(buf));
 	if(n < 0){
-		dbg("proxychunk: read: %r\n");
+		dbg("proxychunk: read %s: %r\n", label);
 		return -1;
+//		return 0; //FIXME experiment ff crashes
 	}
 	if(n == 0){
-//		dbg("proxychunk: eof\n");
+//		dbg("proxychunk: eof %s\n", label);
 		return -1;
 	}
 	int nw = iowrite(io, tgt, buf, n);
 	if(nw != n) {
-		error("proxychunk: write: %r\n");
+		error("proxychunk: write %s: %r\n", label);
 		return -1;
 	}
 	return 0;
@@ -476,7 +477,7 @@ proxy(void *arg)
 		FD_ZERO(&rfds);
 		FD_SET(ctx->pxyfd, &rfds);
 		FD_SET(ctx->vncfd, &rfds);
-		tv.tv_sec = 5;
+		tv.tv_sec = 60;
 		tv.tv_usec = 0;
 		retval = ioselect(io, maxfd+1, &rfds, &tv);
 		if(retval < 0){
@@ -484,10 +485,14 @@ proxy(void *arg)
 			break; // FIXME or continue?
 		}
 		if(retval == 0) continue; // select timeout
+		int done = 0;
 		if(FD_ISSET(ctx->pxyfd, &rfds))
-			if(proxychunk(io, ctx->pxyfd, ctx->vncfd) < 0) break;
+			if(proxychunk(io, ctx->pxyfd, ctx->vncfd, "pxy->vnc") < 0)
+				done = 1;
 		if(FD_ISSET(ctx->vncfd, &rfds))
-			if(proxychunk(io, ctx->vncfd, ctx->pxyfd) < 0) break;
+			if(proxychunk(io, ctx->vncfd, ctx->pxyfd, "vnc->pxy") < 0)
+				done = 1;
+		if(done) break; // FIXME ff crash
 	}
 	ioclose(io, ctx->pxyfd);
 	ioclose(io, ctx->vncfd);
