@@ -1,0 +1,36 @@
+#!/bin/bash
+set -ueo pipefail
+set -x
+
+[ $# = 1 ] || {
+    echo "usage: $0 USER"
+    exit 2
+}
+
+user=$1
+ip=172.17.0.2
+homebase=/home
+
+groupadd -r $user
+useradd --no-log-init -b $homebase -r -g $user -G wheel $user
+echo '%wheel ALL=(ALL:ALL) NOPASSWD: ALL' >> /etc/sudoers
+
+user_dirs=(/9 $homebase/$user $homebase/$user/.vnc /tmp/.X11-unix)
+mkdir -p "${user_dirs[@]}"
+
+cat <<EOF >$homebase/$user/.vnc/xstartup
+#!/bin/sh
+unset SESSION_MANAGER
+unset DBUS_SESSION_BUS_ADDRESS
+xsetroot -solid grey
+xhost +local:
+lx-dwm
+EOF
+chmod a+x $homebase/$user/.vnc/xstartup
+mkdir /usr/$user
+# ln -s $homebase/$user /home/$user
+
+chown -R $user:$user "${user_dirs[@]}"
+chmod +t /tmp/.X11-unix
+
+exec su - $user -c "/usr/local/p9p/bin/lxsrv -i $ip"

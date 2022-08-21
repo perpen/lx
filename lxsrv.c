@@ -531,8 +531,11 @@ x11conn(void *arg)
 		dbg("x11conn: spawning vncserver %s %s\n",
 			colondpy, winsize);
 		if(threadspawnl(fds,
-			"/usr/bin/vncserver", "vncserver",
-			colondpy, "-fg", "-autokill", "-geometry", winsize,
+            // FIXME find in PATH, and optionally pass as param to lxsrv
+			"/usr/local/tigervnc/bin/vncserver", "vncserver",
+			colondpy,
+			"-SecurityTypes", "None",
+			"-fg", "-autokill", "-geometry", winsize,
 			NULL) < 0)
 			sysfatal9("x11conn: error starting vncserver: %r");
 	}
@@ -919,10 +922,11 @@ threadmain(int argc, char **argv)
 	esnprint(tmp, sizeof tmp, "/tmp/%s.%s", progname, getuser());
 	tmpdir = tmp;
 	mkdir_p(tmpdir, 0700);
+	printf("session logs under %s\n", tmpdir);
 
 	char adir[40], ldir[40], addr[50];
 	esnprint(addr, sizeof(addr), "tcp!%s!%s", interface, port);
-	dbg("threadmain: listening on %s\n", addr);
+	printf("listening on %s\n", addr);
 	int acfd = announce(addr, adir);
 	if(acfd < 0) sysfatal("threadmain: announce %s: %r", addr);
 	for(;;){

@@ -1,3 +1,9 @@
+TODO
+- multiplex via single connection
+- use https://github.com/ftrvxmtrx/9pfs ?
+- /9 -> /mnt/term ?
+
+
 lx - running Linux commands from Plan 9
 =======================================
 
@@ -127,6 +133,10 @@ of `$PLAN9/bin/wintext` the following line:
 ```
 
 #### VNC server
+For heavy clients such as browsers, performance is pretty awful. I only
+found it acceptable when running a Plan 9 VM and connecting to the Linux
+host.
+
 `lx` has only been tested with `tigervnc`, but other implementations
 are expected to work with little or no code change.
 
