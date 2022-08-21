@@ -1835,7 +1835,7 @@ updatesizehints(Client *c)
 void
 lxwindowlabel(char *s)
 {
-	char *path ="/9/dev/label";
+	char *path ="/mnt/term/dev/label";
 	int fd = open(path, O_WRONLY|O_APPEND);
 	if (fd < 0) {
 		fprintf(stderr, "unable to open %s\n", path);

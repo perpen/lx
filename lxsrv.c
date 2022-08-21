@@ -14,7 +14,7 @@ extern int mkdir(const char *pathname, mode_t mode);
 #include <thread.h>
 
 #define DEFAULTPORT "9000"
-#define NINEMNT "/9"
+#define NINEMNT "/mnt/term"
 #define FDOFF 20
 #define VNCMAXCOUNT 100
 #define VNCMINDPY 100
@@ -531,8 +531,11 @@ x11conn(void *arg)
 		dbg("x11conn: spawning vncserver %s %s\n",
 			colondpy, winsize);
 		if(threadspawnl(fds,
-			"/usr/bin/vncserver", "vncserver",
-			colondpy, "-fg", "-autokill", "-geometry", winsize,
+            // FIXME find in PATH, and optionally pass as param to lxsrv
+			"/usr/local/tigervnc/bin/vncserver", "vncserver",
+			colondpy,
+			"-SecurityTypes", "None",
+			"-fg", "-autokill", "-geometry", winsize,
 			NULL) < 0)
 			sysfatal9("x11conn: error starting vncserver: %r");
 	}
@@ -707,7 +710,7 @@ getparams()
 	return params;
 }
 
-// Mounts plan 9 fs on /9, then does bind mounts
+// Mounts plan 9 fs on /mnt/term, then does bind mounts
 void
 setupns(char *host, int port, char *mounts)
 {
@@ -723,7 +726,7 @@ setupns(char *host, int port, char *mounts)
 	if(mount("none", "/", NULL, MS_REC|MS_PRIVATE, NULL) < 0)
 		sysfatal9("setupns: mount /: %r");
 
-	// Mounts the plan9 fs on /9 by running p9p commands srv and 9pfuse
+	// Mounts the plan9 fs on /mnt/term by running p9p commands srv and 9pfuse
 	{
 		char addr[64];
 		char srvname[50];
@@ -748,7 +751,7 @@ setupns(char *host, int port, char *mounts)
 		p9prun("9pfuse", srvpath, NINEMNT);
 	}
 
-	// Do the requested bind-mounts from /9/X to /X
+	// Do the requested bind-mounts from /mnt/term/X to /X
 	// "/A:/a,/B:/b"
 	char *entries[10];
 	int n = getfields(mounts, entries, 10, 1, ",");
@@ -784,7 +787,7 @@ p9prun(char *a0, char *a1, char *a2)
 	free(w);
 }
 
-// Connects 0, 1, 2 to /9/fd/20,21,22
+// Connects 0, 1, 2 to /mnt/term/fd/20,21,22
 void
 setupio()
 {
@@ -919,10 +922,11 @@ threadmain(int argc, char **argv)
 	esnprint(tmp, sizeof tmp, "/tmp/%s.%s", progname, getuser());
 	tmpdir = tmp;
 	mkdir_p(tmpdir, 0700);
+	printf("session logs under %s\n", tmpdir);
 
 	char adir[40], ldir[40], addr[50];
 	esnprint(addr, sizeof(addr), "tcp!%s!%s", interface, port);
-	dbg("threadmain: listening on %s\n", addr);
+	printf("listening on %s\n", addr);
 	int acfd = announce(addr, adir);
 	if(acfd < 0) sysfatal("threadmain: announce %s: %r", addr);
 	for(;;){

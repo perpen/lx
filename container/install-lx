@@ -1,0 +1,7 @@
+#!/bin/bash
+set -ueo pipefail
+
+export PLAN9=/usr/local/p9p
+PATH=$PATH:$PLAN9/bin
+cd /lx
+mk -f mkfile.srv install || true

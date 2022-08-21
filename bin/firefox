@@ -5,8 +5,8 @@
 flag e +
 
 # On 9
-if(! test -d /9){
-	exec lx /9$0 $*
+if(! test -d /mnt/term){
+	exec lx /mnt/term$0 $*
 }
 
 # On Linux

@@ -1,0 +1,16 @@
+#!/bin/bash
+set -ueo pipefail
+
+p9p_version=7b8251125b9f08f03fb9ea26b7617e1551ef6090
+p9p_prefix=/usr/local/p9p
+
+p9p_deps=(xorg-server libxt libxext fuse fontconfig libxft)
+p9p_build_deps=(git base-devel)
+
+pacman -S --noconfirm --needed "${p9p_deps[@]}" "${p9p_build_deps[@]}"
+cd /
+git clone https://github.com/9fans/plan9port $p9p_prefix
+cd $p9p_prefix
+git checkout $p9p_version
+export PLAN9=$p9p_prefix
+./INSTALL

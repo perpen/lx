@@ -1,3 +1,7 @@
+TODO
+- multiplex via single connection
+- use https://github.com/ftrvxmtrx/9pfs ?
+
 lx - running Linux commands from Plan 9
 =======================================
 
@@ -8,7 +12,7 @@ command `cpu(1)`:
   notes received by `lx` are translated into signals to the
   Linux process
 - The specific namespace of the Plan 9 client is available
-  to the Linux process under `/9`; with configuration it is
+  to the Linux process under `/mnt/term`; with configuration it is
   possible to have some directories available from Linux under
   the same path as on Plan 9 (e.g. `$home`).
   When possible the working directory is preserved when running
@@ -49,8 +53,8 @@ happens when I run `lx gcc blah.c` from Plan 9 directory
 - `lx` connects to server `lxsrv` running on Linux, which
   creates a detached process to handle the session.
 - This process creates a new mount namespace using `unshare(2)`
-  and mounts the fs exported from Plan 9 on `/9`
-- It then bind-mounts `/9/usr/henri` (my home directory) onto
+  and mounts the fs exported from Plan 9 on `/mnt/term`
+- It then bind-mounts `/mnt/term/usr/henri` (my home directory) onto
   `/usr/henri`
 - It chdirs to the working directory of `lx`, i.e.
   `/usr/henri/src/blah`
@@ -72,7 +76,7 @@ Requirements
 ------------
 
 - On Linux: Plan 9 from User Space
-- On Linux: A VNC server if X11 clients will be run
+- On Linux: An (old) version of tigervnc, if X11 clients will be run
 - Connectivity: the client `lx` needs to connect to the port served
   by the Linux server `lxsrv`; The Linux host needs to connect
   to a range of ports connected to `exportfs` servers.
@@ -103,8 +107,8 @@ Skip the VNC sections below if you will not be running X11 clients.
 
 #### Prepare the mount points
 ```
-$ sudo mkdir /9 && sudo chown $USER:$USER /9
-# Optionally, if you want a bind mount of /9/usr/USER on /usr/USER
+$ sudo mkdir /mnt/term && sudo chown $USER:$USER /mnt/term
+# Optionally, if you want a bind mount of /mnt/term/usr/USER on /usr/USER
 # This assumes your username is the same on both sides
 $ sudo mkdir /usr/$USER && sudo chown $USER:$USER /usr/$USER
 ```
@@ -123,12 +127,20 @@ implementing the server.
 For commands `"` and `""` to work, you can add at the beginning
 of `$PLAN9/bin/wintext` the following line:
 ```
-[ -f /9/dev/text ] && exec cat /9/dev/text
+[ -f /mnt/term/dev/text ] && exec cat /mnt/term/dev/text
 ```
 
 #### VNC server
+For heavy clients such as browsers, performance is pretty awful. I only
+found it acceptable when running a Plan 9 VM and connecting to the Linux
+host.
+
 `lx` has only been tested with `tigervnc`, but other implementations
 are expected to work with little or no code change.
+
+*2022 update*: `tigervnc` maintainers have no idea that some users may want
+to use it outside systemd. Rather than testing with another VNC implementation
+I was lazy and just recompiled an older version, see `./tigervnc-install`.
 
 Once you have confirmed X11 clients work with `lx`, you can
 eliminate an overlong hardcoded wait for the VNC server:

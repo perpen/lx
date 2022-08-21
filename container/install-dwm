@@ -1,0 +1,5 @@
+#!/bin/bash
+set -ueo pipefail
+
+cd /lx/lx-dwm
+make install

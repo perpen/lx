@@ -1,0 +1,51 @@
+#!/bin/bash
+# Installs non-degenerate version of tigervnc to $vnc_prefix (defined below)
+
+set -ueo pipefail
+
+vnc_version=c68196700ec88c349f919aa03b78766350fd7fff
+vnc_prefix=/usr/local/tigervnc
+
+xorg_url=https://xorg.freedesktop.org/releases/individual/xserver/xorg-server-1.20.9.tar.bz2
+
+vnc_deps=(fltk pam gnutls libjpeg-turbo libxtst pixman
+    xorg-xauth xorg-xsetroot xkeyboard-config xorg-xkbcomp
+    libgl libgcrypt perl libxdamage libxfont2 libdrm
+    xorg-xinit)
+
+build-tigervnc() {
+    local vnc_build_deps=(git base-devel cmake nasm xorg-font-util xorg-util-macros
+        xtrans xorgproto mesa imagemagick)
+    sudo pacman -S --noconfirm --needed "${vnc_deps[@]}" "${vnc_build_deps[@]}"
+
+    cd /var/tmp
+    rm -rf tigervnc
+    git clone https://github.com/TigerVNC/tigervnc.git
+    cd tigervnc
+    git checkout $vnc_version
+
+    cmake -G "Unix Makefiles" \
+        -DCMAKE_INSTALL_PREFIX=$vnc_prefix \
+        -DCMAKE_INSTALL_SBINDIR=$vnc_prefix/bin \
+        -DCMAKE_INSTALL_LIBEXECDIR=$vnc_prefix/bin \
+        -DBUILD_JAVA=FALSE \
+        -DBUILD_VIEWER=false
+    sudo make -j$(nproc) install
+
+    cd unix/xserver
+    curl -sf "$xorg_url" | tar xfj - --strip-components=1
+    patch -p1 <../xserver120.patch
+    autoreconf -fiv
+    CFLAGS="${CFLAGS:-} -I/usr/include/libdrm" ./configure --prefix=$vnc_prefix \
+        --disable-static --without-dtrace \
+        --disable-xorg --disable-xnest --disable-xvfb --disable-dmx \
+        --disable-xwin --disable-xephyr --disable-kdrive --disable-xwayland \
+        --disable-config-hal --disable-config-udev --with-pic \
+        --disable-unit-tests --disable-devel-docs --disable-selective-werror \
+        --disable-dri --enable-dri2 --enable-dri3 --enable-glx
+    sudo make -j$(nproc) install
+}
+
+set -x
+cd "$(dirname $0)"
+"$@"

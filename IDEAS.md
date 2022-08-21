@@ -11,5 +11,5 @@ Maybe:
 
 ```
 % aux/listen1 -tv tcp!*!2000 exportfs -dr / <[10=0] >[11=1] >[12=2]
-$ rc -i   </9/fd/10 >>/9/fd/11  2>>/9/fd/12
+$ rc -i   </mnt/term/fd/10 >>/mnt/term/fd/11  2>>/mnt/term/fd/12
 ```
