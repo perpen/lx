@@ -1,0 +1,3 @@
+*.o
+/lx-dwm/lx-dwm
+/lx-dwm/config.h

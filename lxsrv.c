@@ -532,7 +532,8 @@ x11conn(void *arg)
 			colondpy, winsize);
 		if(threadspawnl(fds,
 			"/usr/bin/vncserver", "vncserver",
-			colondpy, "-fg", "-autokill", "-geometry", winsize,
+			colondpy,
+			//"-fg", "-autokill", "-geometry", winsize,
 			NULL) < 0)
 			sysfatal9("x11conn: error starting vncserver: %r");
 	}
