@@ -14,7 +14,7 @@ extern int mkdir(const char *pathname, mode_t mode);
 #include <thread.h>
 
 #define DEFAULTPORT "9000"
-#define NINEMNT "/9"
+#define NINEMNT "/mnt/term"
 #define FDOFF 20
 #define VNCMAXCOUNT 100
 #define VNCMINDPY 100
