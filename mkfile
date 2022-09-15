@@ -32,10 +32,11 @@ watch:V:
 # Restart the server on build, see mkfile.srv:/pkill
 # This assumes the current name is not 'lx'
 srvloop:V:
-	FIXME weirdly 9pfuse fails when lx2srv is started from here
+	# FIXME weirdly 9pfuse fails when lx2srv is started from here
 	exe=`{cat name}^srv
+	echo $exe
 	lx pkill $exe || echo -n
-	while(){ echo '####' `{date}; lx $exe -p 8000 || sleep 1 }
+	while(){ echo '####' `{date}; lx $exe -p 8000 -i 192.168.0.2 || sleep 3 }
 
 gitpush:V:
 	# Do not commit ./name as its content must stay 'lx' in the

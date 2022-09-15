@@ -1,7 +1,7 @@
 // for unshare(2)
 #define _GNU_SOURCE
 
-#include <u.h>
+#include <u.h> 
 // unix start
 #include <errno.h>
 #include <signal.h>
@@ -531,11 +531,9 @@ x11conn(void *arg)
 		dbg("x11conn: spawning vncserver %s %s\n",
 			colondpy, winsize);
 		if(threadspawnl(fds,
-            // FIXME find in PATH, and optionally pass as param to lxsrv
-			"/usr/local/tigervnc/bin/vncserver", "vncserver",
+			"/usr/bin/vncserver", "vncserver",
 			colondpy,
-			"-SecurityTypes", "None",
-			"-fg", "-autokill", "-geometry", winsize,
+			//"-fg", "-autokill", "-geometry", winsize,
 			NULL) < 0)
 			sysfatal9("x11conn: error starting vncserver: %r");
 	}
