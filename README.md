@@ -1,6 +1,5 @@
 TODO
 - multiplex via single connection
-- use https://github.com/ftrvxmtrx/9pfs ?
 
 lx - running Linux commands from Plan 9
 =======================================
@@ -115,7 +114,7 @@ $ sudo mkdir /usr/$USER && sudo chown $USER:$USER /usr/$USER
 
 #### Install Plan 9 from User Space
 The namespace exported from Plan 9 is mounted on Linux
-using the `9pfuse` command provided by p9p.
+using the `9pfs` command (https://github.com/bunny351/9pfs).
 Environment variable `PLAN9` must be defined when starting
 `lxsrv`, pointing to the p9p base directory.
 
@@ -212,8 +211,8 @@ commands. These are the known problems:
 - Passing environment variables to a Linux command is currently
   difficult and requires clunky command lines like
   `lx bash -c 'X=1; echo $X'`.
-- ~.6s lag on each `lx` invocation, due to running `exportfs`
-  and `9pfuse` each time:
+- ~.2s lag on each `lx` invocation, due to running `exportfs`
+  and `9pfs` each time:
   If that ever became a problem for some use case
   it should be possible to maintain a persistent session, e.g.
   from a Plan 9 fs.

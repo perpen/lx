@@ -69,7 +69,7 @@ void x11listen(void *arg);
 void command(char *cwd, char **argv);
 Params getparams();
 char* readparamsblock(int fd);
-void p9prun(char *a0, char *a1, char *a2);
+void p9prun(char *a0, char *a1, char *a2, char *a3, char *a4);
 void setupns(char *host, int port, char *mounts);
 void setupio();
 void handlenote(char *note);
@@ -386,6 +386,7 @@ killvnc()
 	dbg("killvnc\n");
 	char rx[50];
 	esnprint(rx, sizeof(rx), "Xvnc :%d ", S.vncdpy);
+	dbg("killvnc: rx=%s\n", rx);
 	int fds[] = { dup(0, -1), dup(S.logfd, -1), dup(S.logfd, -1) };
 	if(threadspawnl(fds, "/bin/pkill", "pkill", "-f", rx, NULL) < 0)
 		error("killvnc: cannot start pkill: %r\n");
@@ -726,13 +727,13 @@ setupns(char *host, int port, char *mounts)
 	if(mount("none", "/", NULL, MS_REC|MS_PRIVATE, NULL) < 0)
 		sysfatal9("setupns: mount /: %r");
 
-	// Mounts the plan9 fs on /mnt/term by running p9p commands srv and 9pfuse
+	// Mounts the plan9 fs on /mnt/term by running p9p commands srv and 9pfs
 	{
 		char addr[64];
 		char srvname[50];
 		char srvpath[100];
 		char p9pns[100];
-		dbg("fuse: file server %s:%d\n", host, port);
+		dbg("setupns: file server %s:%d\n", host, port);
 
 		esnprint(p9pns, sizeof p9pns, "%s/ns", tmpdir);
 		mkdir_p(p9pns, 0700);
@@ -743,12 +744,12 @@ setupns(char *host, int port, char *mounts)
 
 		esnprint(addr, sizeof(addr), "tcp!%s!%d", host, port);
 		if(unlink(srvpath) < 0 && errno != ENOENT)
-			sysfatal9("fuse: unlink %s: %r", srvpath);
+			sysfatal9("setupns: unlink %s: %r", srvpath);
 
-		dbg("fuse: srv %s %s\n", addr, srvname);
-		p9prun("srv", addr, srvname);
-		dbg("fuse: 9pfuse %s %s\n", srvpath, NINEMNT);
-		p9prun("9pfuse", srvpath, NINEMNT);
+		dbg("setupns: srv %s %s\n", addr, srvname);
+		p9prun("srv", addr, srvname, NULL, NULL);
+		dbg("setupns: 9pfs %s %s\n", srvpath, NINEMNT);
+		p9prun("9pfs", "-U", srvpath, NINEMNT, NULL);
 	}
 
 	// Do the requested bind-mounts from /mnt/term/X to /X
@@ -771,13 +772,13 @@ setupns(char *host, int port, char *mounts)
 
 // Runs p9p command, sysfatal on error
 void
-p9prun(char *a0, char *a1, char *a2)
+p9prun(char *a0, char *a1, char *a2, char *a3, char *a4)
 {
 	char bin[200];
 	esnprint(bin, sizeof bin, "%s/bin/%s", plan9dir, a0);
 	Channel *chan = threadwaitchan();
 	int fds[] = { dup(0, -1), dup(S.logfd, -1), dup(S.logfd, -1) };
-	int srvpid = threadspawnl(fds, bin, a0, a1, a2, NULL);
+	int srvpid = threadspawnl(fds, bin, a0, a1, a2, a3, NULL);
 	if(srvpid < 0)
 		sysfatal9("p9prun: cannot run %s: %r", bin);
 	Waitmsg *w = recvp(chan);
@@ -866,9 +867,9 @@ cleanup()
 	if(!S.clientended)
 		send9("exit unexpected error, check lx server logs");
 
-	dbg("cleanup: hasten 9pfuse death\n");
+	dbg("cleanup: hasten 9pfs death\n");
 	// We already told the client to exit, it should then be
-	// stopping the fs on 9. To help 9pfuse realise the
+	// stopping the fs on 9. To help 9pfs realise the
 	// remote server is dead and terminate, we access a random
 	// path under the mount point.
 	char path[40];
